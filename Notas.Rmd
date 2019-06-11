@@ -1,14 +1,15 @@
 ---
 title: "Notas - Obligatorio"
 output:
-  word_document: default
-  pdf_document: default
   html_document: default
+  pdf_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root_dir = "~/Projects/r/Obligatorio")
+library(dplyr)
 ```
 
 # Notas
@@ -21,7 +22,7 @@ Podemos usar el paquete `readxl`.
 
 Primero debemos instalarlo:
 
-```{r}
+```{r, eval = FALSE}
 install.packages("readxl")
 ```
 
@@ -37,6 +38,64 @@ En nuestro caso el nombre del archivo de Excel que queremos importar se llama `O
 
 ```{r}
 data = read_excel('./Obligatorio.xlsx')
+```
+
+## Algunas funciones de ayuda
+
+Coloco el prefijo `gi` adelante de las funciones para no sobrescribir ninguna función global.
+
+Para que funcionen estas funcione es necesario instalar los siguientes módulos:
+
+```{r, eval = FALSE}
+install.packages("circlize")
+install.packages("tidyr")
+```
+
+Y debemos cargarlos.
+
+```{r}
+library(circlize)
+library(tidyr)
+```
+
+### `gi_bar_chart`
+
+Función para crear gráficos de barras. Tiene un estilo sencillo y selecciona la paleta de colores de forma automatica basada en el color azul.
+
+```{r}
+gi_bar_chart = function (x, y, main="", legend = FALSE) {
+  # Random colors
+  colors = circlize::rand_color(length(x), hue = 'blue')
+  # Basic Barplot
+  my_bar = barplot(
+    height = y,
+    names.arg = x,
+    border = NA,
+    col = colors,
+    main = main 
+  )
+  # Add the text
+  text(x = my_bar, y = y, labels = y, pos = 1, col = rgb(1, 1, 1))
+}
+```
+
+### `gi_summarize_by`
+
+Función para agrupar y contar los datos según alguna de las columnas. Es necesario pasarle una lista de nombres para intercambiar por los valores en el eje `x`.
+
+```{r}
+gi_summarize_by = function(data, attribute, lista) {
+  data %>%
+    select(ID, (!!as.name(attribute))) %>%
+    group_by(ID) %>%
+    summarize(
+      tipo = lista[dplyr::first((!!as.name(attribute)))], 
+      id = dplyr::first((!!as.name(attribute)))
+    ) %>%
+    group_by(tipo) %>%
+    summarize(cuenta = n(), id = dplyr::first(id)) %>%
+    dplyr::arrange(id)
+}
 ```
 
 ## Estudio preliminar de los datos
@@ -66,21 +125,140 @@ Podemos ver que los clientes pueden tener más de un producto. Tenemos que agrup
 
 ```{r}
 unique_clients = length((df %>%
-  select(ID, Apellido) %>%
+  select(ID) %>%
   group_by(ID) %>%
   summarize() %>%
   arrange(desc(ID)))$ID)
 unique_clients
 ```
 
-Ahora hagamoslo por genero
+### Agrupamos por genero
+
+```{r}
+diccionario_de_generos = c('Masculino', 'Femenino')
+names(diccionario_de_generos) = c('H', 'M')
+generos = df %>%
+  select(ID, sexo) %>%
+  group_by(ID) %>%
+  summarize(genero = diccionario_de_generos[dplyr::first(sexo)]) %>%
+  group_by(genero) %>%
+  summarize(cuenta = n()) %>%
+  arrange(cuenta)
+generos
+```
+
+Graficamos los resultados
+
+```{r}
+gi_bar_chart(generos$genero, generos$cuenta, main = "Clientes por Genero")
+```
+
+### Agrupamos por edad
+
+```{r}
+id_de_edad_a_rango = c('18 a 30', '30 a 45', '45 a 60', '>60')
+edades = gi_summarize_by(df, 'Edad', id_de_edad_a_rango)
+edades
+```
+
+### Graficamos los resultados
+
+```{r}
+gi_bar_chart(edades$tipo, edades$cuenta, main = "Clientes por rango de edad")
+```
+
+### Agrupamos por localidad
+
+```{r}
+id_de_localidad_a_lugar = c('Montevideo', 'Interior')
+localidades = gi_summarize_by(df, 'Localidad', id_de_localidad_a_lugar)
+localidades
+```
+
+Graficamos los resultados
+
+```{r}
+gi_bar_chart(localidades$tipo, localidades$cuenta, main = "Clientes por Localidad")
+```
+
+### Agrupamos por segmento
+
+```{r}
+id_de_segmento_a_tipo = c('VIP', 'Regular', 'Malo')
+segmentos = gi_summarize_by(df, 'Segmento', id_de_segmento_a_tipo)
+segmentos
+```
+
+Graficamos los resultados
+
+```{r}
+gi_bar_chart(segmentos$tipo, segmentos$cuenta, main = "Clientes por Segmento")
+```
+
+### Agrupamos por producto
+
+```{r}
+id_de_producto_a_tipo = c('100k en 12c', '50k en 12c', '25k en 12c', '16k en 12c')
+productos = gi_summarize_by(df, 'Segmento', id_de_producto_a_tipo)
+productos
+```
+
+Graficamos los resultados
+
+```{r}
+gi_bar_chart(productos$tipo, productos$cuenta, main = "Clientes por Producto")
+```
+
+### Agrupaciones con más de una variable
 
 ```{r}
 df %>%
-  select(ID, sexo) %>%
   group_by(ID) %>%
-  mutate(s = dplyr::first(sexo))
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(Edad = replace(Edad, !is.na(Edad), id_de_edad_a_rango[Edad])) %>%
+  group_by(sexo, Edad) %>%
+  summarize(cuenta = n()) %>%
+  spread(Edad, cuenta, )
 ```
+
+```{r}
+#df %>% group_by(country, gender) %>% 
+#       summarise(total_loan_amount =sum(loan_amount)) %>% 
+#       spread(gender, total_loan_amount) %>% 
+#       ungroup() %>%
+#       transmute(country = country,  female_percent = F / (F+M), male_percent = M /(F+M))
+df %>%
+  unique(ID) %>%
+  select(Edad, sexo) %>%
+  group_by(Edad, sexo) %>%
+  summarise(cuenta = sum(!is.na(sexo)))
+```
+
+## Observaciones
+
+- La categorización del servicio fija la Tasa. Cuanto mejor es el cliente mejor es la Tasa.
+
+- Una persona saco el prestamo el 4 de abril. Por lo que la cuota le debe haber caido en mayo. Si no paga, los días de atraso son un mes despues de la fecha de atraso. Una deuda de mayo debería tener unos 10 días.
+
+- El saldo de capital es lo que le resta por devolver si el atraso es cero.
+
+- El saldo de intereses es lo que me queda de intereses por cobrarle a las personas. Que es mi ganancia, basicamente.
+
+- Para seleccionar solo las filas únicas podemos utilizar la función `unique`.
+
+- Buscar diferencias entre múltiples variables para ver si hay diferencias. Ingreso vs Edad, Ingreso vs Genero, Ubicación, etc. También podrías decir productos promedios por persona. Cual es el capital remanente por persona.
+
+- Buscar cuanto voy generando de plata por mes.
+
+- Podrías hacer un gráfico que diga cuanto se genero por més, cuanto se presto, cuanto esta atrasado, y cuanto es el remanente. Lo podemos ver según tasa promedio. Podemos ver la ganancia esperada.
+
+> La idea es ver como vengo. Decime si le estoy dando prestamos correctamente a mis clientes.
+
+- Ahora puede ver cuanto preste, cuanto me queda por cobrar.
+
+> La primera y la cuarta son de los 10515, mientras que la dos y la tres trata de todos los datos.
+
+El cálculo de previsiones es sobre el máximo de atraso que tiene el cliente. Tenemos que provisionar sobre todo el saldo que nos debe. Osea el saldo.
 
 ---
 
@@ -135,8 +313,13 @@ Existe una librería llamada `rlist` que extiende el tipo `list` con varios meto
 
 Primero tenemos que instalar la librería y cargarla a la sesión.
 
-```{r}
+```{r, eval = FALSE}
 install.packages("rlist")
+```
+
+Luego la cargamos.
+
+```{r}
 library(rlist)
 ```
 
@@ -168,11 +351,93 @@ library(dplyr)
 Podemos utilizar esta librería en conjunto con el operador `%>%` (pipe) para manipular el `data.frame`. En el siguiente ejemplo se muestra como se puede agrupar la información por `season` para contar la cantidad de capitulos existentes por temporada.
 
 ```{r}
-episodes %>%
+episode_list = episodes %>%
   select(season) %>%
   group_by(season) %>%
-  summarise(n = n())
+  summarise(n = n()) %>%
+  arrange(season)
 ```
+
+
+## Construir gráficos de barras
+
+Una forma sencilla de construir gráficos de barras es mediante la función global `barplot`.
+
+```{r}
+barplot(
+  episode_list$n, 
+  names.arg = episode_list$season, 
+  main="Episodios por temporada", 
+  xlab="Temporadas", 
+  ylab="Episodios"
+)
+```
+
+## Clase 7
+
+Carga de base de datos
+
+```{r}
+library(readxl)
+Base <- read_excel("./Obligatorio.xlsx")
+Base
+```
+
+Cambiar las categorias a texto --> factor
+
+```{r}
+Base$Edad=factor(Base$Edad,labels = c('18-30','30-45','45-60','>60'))
+```
+
+¿Que problema tiene la base?
+
+> R: Multiples observaciones en un solo conjunbto
+
+```{r}
+Base1 <- Base %>%
+  select(ID,Apellido,Nombre,sexo,Edad,Localidad,Segmento,Ingresos) %>%
+  unique %>%
+  print
+```
+
+Calculo de previsiones
+ 
+```{r}
+Base2<-Base %>%
+  group_by(ID) %>%
+  summarize(CR=sum(Saldo_Capital),
+            MA=max(Atraso),
+            Prev=CR*case_when(MA<=10 ~ 0.005,MA<=30 ~ 0.015,MA<=60 ~ 0.03,MA<=120 ~ 0.17,MA<=180 ~ 0.5,MA>180 ~ 1))
+Base2
+```
+
+No se que calcula esta operación
+
+```{r}
+sum(Base2$Prev)/sum(Base2$CR)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
