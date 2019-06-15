@@ -7,8 +7,10 @@ output:
 ---
 
 ```{r setup, include=FALSE}
+#local_path = "~/Projects/r/Obligatorio"
+local_path = "~/Dropbox/ORT/MBA/programacion_para_analitica/obligatorio/repo"
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root_dir = "~/Projects/r/Obligatorio")
+knitr::opts_knit$set(root_dir = local_path)
 library(dplyr)
 ```
 
@@ -132,6 +134,14 @@ unique_clients = length((df %>%
 unique_clients
 ```
 
+Otra forma de ver cuantos clientes unicos tenemos es la siguiente:
+
+```{r}
+unique_clients = nrow(df %>%
+  select(ID) %>%
+  unique())
+unique_clients
+```
 ### Agrupamos por genero
 
 ```{r}
@@ -234,7 +244,41 @@ df %>%
   summarise(cuenta = sum(!is.na(sexo)))
 ```
 
-## Observaciones
+### Previsiones
+
+Funcion para obtener el porcentaje a aplicar en el calculo de previsiones
+
+```{r}
+get_percentage = function(max_delay_days) {
+  percentage = ifelse(0 <= max_delay_days & max_delay_days <= 10, 0.005, 
+  ifelse(11 <= max_delay_days & max_delay_days <= 30, 0.015, 
+  ifelse(31 <= max_delay_days & max_delay_days <= 60, 0.03,
+  ifelse(61 <= max_delay_days & max_delay_days <= 120, 0.17,
+  ifelse(121 <= max_delay_days & max_delay_days <= 180, 0.5, 1)))))
+  return(percentage)
+}
+```
+
+Calculo el resumen para cada cliente incluyendo las previsiones.
+
+```{r}
+customer_summary = df %>%
+  group_by(ID) %>%
+  summarise(apellido = first(Apellido), 
+            nombre = first(Nombre), 
+            atraso_maximo = max(Atraso), 
+            saldo_capital = sum(Saldo_Capital), 
+            capital_pagado = sum(Capital_Pagado),
+            saldo_intereses = sum(Saldo_Intereses),
+            intereses_pagos = sum(Intereses_Pagos),
+            prestamo = sum(Prestamo),
+            prevision = saldo_capital*get_percentage(atraso_maximo))
+head(customer_summary)
+```
+
+
+
+### Observaciones
 
 - La categorización del servicio fija la Tasa. Cuanto mejor es el cliente mejor es la Tasa.
 
