@@ -264,20 +264,66 @@ Calculo el resumen para cada cliente incluyendo las previsiones.
 ```{r}
 customer_summary = df %>%
   group_by(ID) %>%
-  summarise(apellido = first(Apellido), 
+  summarize(apellido = first(Apellido), 
             nombre = first(Nombre), 
+            segmento = first(Segmento),
             atraso_maximo = max(Atraso), 
-            saldo_capital = sum(Saldo_Capital), 
-            capital_pagado = sum(Capital_Pagado),
-            saldo_intereses = sum(Saldo_Intereses),
-            intereses_pagos = sum(Intereses_Pagos),
             prestamo = sum(Prestamo),
-            prevision = saldo_capital*get_percentage(atraso_maximo))
+            capital_pagado = sum(Capital_Pagado),
+            saldo_capital = sum(Saldo_Capital), 
+            intereses_pagos = sum(Intereses_Pagos),
+            saldo_intereses = sum(Saldo_Intereses),
+            prevision = sum(Saldo_Capital)*get_percentage(max(Atraso)))
 head(customer_summary)
 ```
 
+Calculo el resumen para TuCredito
 
+```{r}
+company_summary = customer_summary %>%
+  summarize(
+    prestamo = sum(prestamo),    
+    capital_pagado = sum(capital_pagado),    
+    saldo_capital = sum(saldo_capital), 
+    intereses_pagos = sum(intereses_pagos),    
+    saldo_intereses = sum(saldo_intereses),
+    prevision = sum(prevision),
+    # Calculo el resultado como los intereses cobrados menos la prevision
+    resultado = sum(intereses_pagos) - sum(prevision),
+    # Calculo cuanto representa el resultado en lo que tengo actualmente invertido, (desde el punto de vista contable, no financiero)
+    resultado_porcentual = (sum(intereses_pagos) - sum(prevision))*100/sum(saldo_capital),
+  )
+company_summary
+```
 
+```{r}
+# Estoy trancado no me doy cuenta como graficar esto de mejor manera
+barplot(as.matrix(company_summary))
+```
+
+### Analisis de segmentos
+
+```{r}
+segment_summary = customer_summary %>%
+  select(segmento, atraso_maximo, prestamo, capital_pagado, saldo_capital, intereses_pagos, saldo_intereses, prevision) %>%
+  group_by(segmento) %>%
+  summarize(cantidad_de_clientes = n(),
+            atraso_promedio = mean(atraso_maximo), 
+            prestamo = sum(prestamo), 
+            capital_pagado = sum(capital_pagado),
+            saldo_capital = sum(saldo_capital),
+            intereses_pagos = sum(intereses_pagos),
+            saldo_intereses = sum(saldo_intereses),
+            prevision = sum(prevision),
+            resultado = sum(intereses_pagos) - sum(prevision),
+            porcentual_porcentual = (sum(intereses_pagos) - sum(prevision))*100/sum(saldo_capital))
+head(segment_summary)
+```
+
+```{r}
+# De nuevo, las graficas estan como placeholders 
+barplot(as.matrix(segment_summary))
+```
 ### Observaciones
 
 - La categorización del servicio fija la Tasa. Cuanto mejor es el cliente mejor es la Tasa.
