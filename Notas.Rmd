@@ -221,19 +221,6 @@ df %>%
   spread(Edad, cuenta, )
 ```
 
-```{r}
-#df %>% group_by(country, gender) %>% 
-#       summarise(total_loan_amount =sum(loan_amount)) %>% 
-#       spread(gender, total_loan_amount) %>% 
-#       ungroup() %>%
-#       transmute(country = country,  female_percent = F / (F+M), male_percent = M /(F+M))
-df %>%
-  unique(ID) %>%
-  select(Edad, sexo) %>%
-  group_by(Edad, sexo) %>%
-  summarise(cuenta = sum(!is.na(sexo)))
-```
-
 ## Observaciones
 
 - La categorización del servicio fija la Tasa. Cuanto mejor es el cliente mejor es la Tasa.
