@@ -1,0 +1,351 @@
+---
+title: "Obligatorio - TuCredito"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+local_path = "~/Projects/r/Obligatorio"
+#local_path = "~/Dropbox/ORT/MBA/programacion_para_analitica/obligatorio/repo"
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root_dir = local_path)
+library(dplyr)
+library(circlize)
+library(tidyr)
+library(kableExtra)
+library(readxl)
+options(knitr.table.format = "html")
+# Cargamos los datos
+data = read_excel('./Obligatorio.xlsx')
+df = as.data.frame(data)
+# Funciones accesorias
+### BarChart
+gi_bar_chart = function (x, y, main="", legend = FALSE) {
+  # Random colors
+  colors = c("#048A81", "#06D6A0", "#7CEA9C", "#55D6BE")
+  # Basic Barplot
+  my_bar = barplot(
+    height = y,
+    names.arg = x,
+    border = NA,
+    col = colors,
+    main = main 
+  )
+  # Add the text
+  text(x = my_bar, y = y, labels = y, pos = 1, col = rgb(1, 1, 1))
+}
+### GI Summarize By
+gi_summarize_by = function(data, attribute, lista) {
+  data %>%
+    select(ID, (!!as.name(attribute))) %>%
+    group_by(ID) %>%
+    summarize(
+      tipo = lista[dplyr::first((!!as.name(attribute)))], 
+      id = dplyr::first((!!as.name(attribute)))
+    ) %>%
+    group_by(tipo) %>%
+    summarize(cuenta = n(), id = dplyr::first(id)) %>%
+    dplyr::arrange(id)
+}
+### GI Percent
+gi_percent <- function(x, digits = 2, format = "f", ...) {
+  paste0(formatC(100 * x, format = format, digits = digits, ...), "%")
+}
+### GI Money
+gi_money <- function(x, ...) {
+  paste0("$", formatC(as.numeric(x), format="f", digits=2, big.mark=","))
+}
+### f2si
+f2si<-function (number, rounding=F, digits=ifelse(rounding, NA, 6)) 
+{
+    lut <- c(1e-24, 1e-21, 1e-18, 1e-15, 1e-12, 1e-09, 1e-06, 
+        0.001, 1, 1000, 1e+06, 1e+09, 1e+12, 1e+15, 1e+18, 1e+21, 
+        1e+24, 1e+27)
+    pre <- c("y", "z", "a", "f", "p", "n", "u", "m", "", "k", 
+        "M", "B", "T", "P", "E", "Z", "Y", NA)
+    ix <- findInterval(number, lut)
+    if (ix>0 && ix<length(lut) && lut[ix]!=1) {
+        if (rounding==T && !is.numeric(digits)) {
+            sistring <- paste(round(number/lut[ix]), pre[ix])
+        }
+        else if (rounding == T || is.numeric(digits)) {
+            sistring <- paste(signif(number/lut[ix], digits), pre[ix])
+        }
+        else {
+            sistring <- paste(number/lut[ix], pre[ix])
+        } 
+    }
+    else {
+        sistring <- as.character(number)
+    }
+    return(sistring)
+}
+### Get percentage
+get_percentage = function(max_delay_days) {
+  percentage = ifelse(0 <= max_delay_days & max_delay_days <= 10, 0.005, 
+  ifelse(11 <= max_delay_days & max_delay_days <= 30, 0.015, 
+  ifelse(31 <= max_delay_days & max_delay_days <= 60, 0.03,
+  ifelse(61 <= max_delay_days & max_delay_days <= 120, 0.17,
+  ifelse(121 <= max_delay_days & max_delay_days <= 180, 0.5, 1)))))
+  return(percentage)
+}
+```
+
+## Perfil del Cliente
+
+```{r, include=FALSE}
+unique_clients = length((df %>%
+  select(ID) %>%
+  group_by(ID) %>%
+  summarize() %>%
+  arrange(desc(ID)))$ID)
+unique_clients
+```
+
+_OBS: Estamos trabajando con **`r unique_clients`** Clientes._
+
+### Ordenados por sexo
+
+```{r, echo=FALSE}
+diccionario_de_generos = c('Masculino', 'Femenino')
+names(diccionario_de_generos) = c('H', 'M')
+generos = df %>%
+  select(ID, sexo) %>%
+  group_by(ID) %>%
+  summarize(genero = diccionario_de_generos[dplyr::first(sexo)]) %>%
+  group_by(genero) %>%
+  summarize(cuenta = n()) %>%
+  arrange(cuenta)
+pie(
+  generos$cuenta, 
+  labels = gi_percent(generos$cuenta / unique_clients),
+  main="Clientes por Sexo", 
+  col = c("#22B6E8", "#EA72A8"),
+  border = NA,
+  radius = 1
+)
+legend('topright', .1, c("M","F"), cex = 0.7, fill = c("#22B6E8", "#EA72A8"))
+```
+
+### Ordenados por rango de edad
+
+```{r, echo=FALSE}
+id_de_edad_a_rango = c('18 a 30', '30 a 45', '45 a 60', '>60')
+edades = gi_summarize_by(df, 'Edad', id_de_edad_a_rango)
+gi_bar_chart(edades$tipo, edades$cuenta, main = "Clientes por rango de edad")
+```
+
+### Por localidad
+
+```{r, echo=FALSE}
+id_de_localidad_a_lugar = c('Montevideo', 'Interior')
+localidades = gi_summarize_by(df, 'Localidad', id_de_localidad_a_lugar)
+pie(
+  localidades$cuenta, 
+  labels = gi_percent(localidades$cuenta / unique_clients),
+  main="Clientes por Localidad", 
+  col = c("#048A81", "#06D6A0"),
+  border = NA,
+  radius = 1
+)
+legend('topright', .1, c("Interior","Montevideo"), cex = 0.7, fill = c("#048A81", "#06D6A0"))
+```
+
+### Por Segmento de Cliente
+
+```{r, echo=FALSE}
+id_de_segmento_a_tipo = c('VIP', 'Regular', 'Malo')
+segmentos = gi_summarize_by(df, 'Segmento', id_de_segmento_a_tipo)
+pie(
+  segmentos$cuenta, 
+  labels = gi_percent(segmentos$cuenta / unique_clients),
+  main="Clientes por Segmento", 
+  col = c("#048A81", "#06D6A0", "#7CEA9C"),
+  border = NA,
+  radius = 1
+)
+legend('topright', .1, c("VIP","Regular", "Malo"), cex = 0.7, fill = c("#048A81", "#06D6A0", "#7CEA9C"))
+```
+
+### Por sexo y edad
+
+```{r, echo=FALSE}
+sexo_y_edad = df %>%
+  group_by(ID) %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(Edad = replace(Edad, !is.na(Edad), id_de_edad_a_rango[Edad])) %>%
+  group_by(sexo, Edad) %>%
+  summarize(cuenta = n()) %>%
+  spread(Edad, cuenta, )
+
+se = as.matrix(sexo_y_edad[2:5])
+rownames(se) = c('H', 'M')
+barplot(se, beside = T, legend.text = rownames(se), args.legend = list(x = "top"), col = c("#22B6E8", "#EA72A8"), border = NA)
+```
+
+### Por ingresos
+
+```{r, echo=FALSE}
+customer_summary = df %>%
+  group_by(ID) %>%
+  summarize(apellido = first(Apellido), 
+            nombre = first(Nombre),
+            ingresos = first(Ingresos), 
+            segmento = first(Segmento),
+            atraso_maximo = max(Atraso), 
+            prestamo = sum(Prestamo),
+            capital_pagado = sum(Capital_Pagado),
+            saldo_capital = sum(Saldo_Capital), 
+            intereses_pagos = sum(Intereses_Pagos),
+            saldo_intereses = sum(Saldo_Intereses),
+            prevision = sum(Saldo_Capital)*get_percentage(max(Atraso))) 
+```
+
+```{r, echo=FALSE}
+ing = select(customer_summary, ingresos)
+ing = as.numeric(unlist(ing))
+hist(ing, main = 'Distrubución de clientes por ingreso', xlab = 'Ingreso', ylab = 'Cantidad de clientes', col = c("#048A81", "#06D6A0"), border = NA) 
+```
+
+## Perfil de Creditos
+
+_Obs: Estamos trabajando con **`r length(df$ID)`** prestamos._
+
+```{r, echo=FALSE}
+productos = df %>%
+  select(ID, Producto) %>%
+  group_by(Producto) %>%
+  summarise(cuenta = n())
+pie(
+  productos$cuenta, 
+  labels = gi_percent(productos$cuenta / length(df$ID)),
+  main="Prestamos por producto", 
+  col = c("#048A81", "#06D6A0", "#7CEA9C", "#55D6BE"),
+  border = NA,
+  radius = 1
+)
+legend('topright', .1, c('100k en 12c', '50k en 12c', '25k en 12c', '16k en 12c'), cex = 0.7, fill = c("#048A81", "#06D6A0", "#7CEA9C", "#55D6BE"))
+```
+
+## Previsiones
+
+### Resumen de la empresa
+
+```{r, echo=FALSE}
+company_summary = customer_summary %>%
+  summarize(
+    'Prestamo' = gi_money(sum(prestamo)),    
+    'Capital Pagado' = gi_money(sum(capital_pagado)),    
+    'Saldo Capital' = gi_money(sum(saldo_capital)), 
+    'Intereses Pagos' = gi_money(sum(intereses_pagos)),    
+    'Saldo de Intereses' = gi_money(sum(saldo_intereses)),
+    'Previsión' = gi_money(sum(prevision)),
+    # Calculo el resultado como los intereses cobrados menos la prevision
+    'Resultado' = gi_money(sum(intereses_pagos) - sum(prevision)),
+    # Calculo cuanto representa el resultado en lo que tengo actualmente invertido, (desde el punto de vista contable, no financiero)
+    'Resultado Porcentual' = gi_percent((sum(intereses_pagos) - sum(prevision)) / sum(saldo_capital)),
+  )
+
+company_summary %>%
+  t() %>%
+  as.data.frame() %>%
+  rename(Monto = V1) %>%
+  kable(digits = 2) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = T,
+    fixed_thead = T
+  )
+```
+
+### Saldo Capital por Segmento
+
+```{r, echo=FALSE}
+segment_summary = customer_summary %>%
+  select(segmento, ingresos, atraso_maximo, prestamo, capital_pagado, saldo_capital, intereses_pagos, saldo_intereses, prevision) %>%
+  group_by(segmento) %>%
+  summarize(cantidad_de_clientes = n(),
+            ingresos = first(ingresos), 
+            atraso_promedio = mean(atraso_maximo), 
+            prestamo = sum(prestamo), 
+            capital_pagado = sum(capital_pagado),
+            saldo_capital = sum(saldo_capital),
+            intereses_pagos = sum(intereses_pagos),
+            saldo_intereses = sum(saldo_intereses),
+            prevision = sum(prevision),
+            resultado = sum(intereses_pagos) - sum(prevision),
+            resultado_porcentual = (sum(intereses_pagos) -     sum(prevision))*100/sum(saldo_capital)) %>%
+  mutate(saldo_c = f2si(saldo_capital))
+```
+
+```{r, echo=FALSE}
+# Random colors
+colors = c("#048A81", "#06D6A0", "#55D6BE")
+# Basic Barplot
+my_bar = barplot(
+  height = segment_summary$saldo_capital,
+  names.arg = c('VIP', 'Regular', 'Malo'),
+  border = NA,
+  col = colors,
+  main = 'Saldo Capital por Segmento' 
+)
+# Add the text
+text(x = my_bar, y = segment_summary$saldo_capital, labels = segment_summary$saldo_c, pos = 1, col = rgb(1, 1, 1))
+```
+
+```{r, echo=FALSE}
+sip = segment_summary %>%
+  select(saldo_capital, capital_pagado, intereses_pagos, prevision) %>%
+  t()
+colnames(sip) = c('VIP', 'Regular', 'Malo')
+```
+
+### Resumen de la empresa por segmento
+
+```{r, echo=FALSE}
+library(tibble) 
+sip %>%
+  as.data.frame() %>%
+  rownames_to_column('___') %>%
+  mutate(VIP=gi_money(VIP), Regular=gi_money(Regular), Malo=gi_money(Malo)) %>%
+  column_to_rownames('___') %>%
+  kable(digits = 2) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = T,
+    fixed_thead = T
+  )
+```
+
+```{r, echo=FALSE}
+barplot(sip, beside = T, legend.text = rownames(sip), args.legend = list(x = "topright"), col = c("#048A81", "#06D6A0", "#7CEA9C", "#55D6BE"), border = NA)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

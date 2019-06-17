@@ -7,9 +7,14 @@ output:
 ---
 
 ```{r setup, include=FALSE}
+#local_path = "~/Projects/r/Obligatorio"
+local_path = "~/Dropbox/ORT/MBA/programacion_para_analitica/obligatorio/repo"
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root_dir = "~/Projects/r/Obligatorio")
+knitr::opts_knit$set(root_dir = local_path)
 library(dplyr)
+library(knitr)
+library(kableExtra)
+options(knitr.table.format = "html")
 ```
 
 # Notas
@@ -79,6 +84,23 @@ gi_bar_chart = function (x, y, main="", legend = FALSE) {
 }
 ```
 
+```{r}
+gi_stacked_bar_chart = function (x, y, main="", legend = FALSE) {
+  # Random colors
+  colors = circlize::rand_color(length(x), hue = 'blue')
+  # Basic Barplot
+  my_bar = barplot(
+    height = y,
+    names.arg = x,
+    border = NA,
+    col = colors,
+    main = main 
+  )
+  # Add the text
+  text(x = my_bar, y = y, labels = y, pos = 1, col = rgb(1, 1, 1))
+}
+```
+
 ### `gi_summarize_by`
 
 Función para agrupar y contar los datos según alguna de las columnas. Es necesario pasarle una lista de nombres para intercambiar por los valores en el eje `x`.
@@ -95,6 +117,24 @@ gi_summarize_by = function(data, attribute, lista) {
     group_by(tipo) %>%
     summarize(cuenta = n(), id = dplyr::first(id)) %>%
     dplyr::arrange(id)
+}
+```
+
+### `gi_percent`
+
+Fomatea un número en formato de porcentaje.
+
+```{r}
+gi_percent <- function(x, digits = 2, format = "f", ...) {
+  paste0(formatC(100 * x, format = format, digits = digits, ...), "%")
+}
+```
+
+### `gi_money`
+
+```{r}
+gi_money <- function(x, ...) {
+  paste0("$", formatC(as.numeric(x), format="f", digits=2, big.mark=","))
 }
 ```
 
@@ -132,6 +172,14 @@ unique_clients = length((df %>%
 unique_clients
 ```
 
+Otra forma de ver cuantos clientes unicos tenemos es la siguiente:
+
+```{r}
+unique_clients = nrow(df %>%
+  select(ID) %>%
+  unique())
+unique_clients
+```
 ### Agrupamos por genero
 
 ```{r}
@@ -221,7 +269,137 @@ df %>%
   spread(Edad, cuenta, )
 ```
 
-## Observaciones
+### Previsiones
+
+Funcion para obtener el porcentaje a aplicar en el calculo de previsiones
+
+```{r}
+get_percentage = function(max_delay_days) {
+  percentage = ifelse(0 <= max_delay_days & max_delay_days <= 10, 0.005, 
+  ifelse(11 <= max_delay_days & max_delay_days <= 30, 0.015, 
+  ifelse(31 <= max_delay_days & max_delay_days <= 60, 0.03,
+  ifelse(61 <= max_delay_days & max_delay_days <= 120, 0.17,
+  ifelse(121 <= max_delay_days & max_delay_days <= 180, 0.5, 1)))))
+  return(percentage)
+}
+```
+
+Calculo el resumen para cada cliente incluyendo las previsiones.
+
+```{r}
+customer_summary = df %>%
+  group_by(ID) %>%
+  summarize(apellido = first(Apellido), 
+            nombre = first(Nombre), 
+            segmento = first(Segmento),
+            atraso_maximo = max(Atraso), 
+            prestamo = sum(Prestamo),
+            capital_pagado = sum(Capital_Pagado),
+            saldo_capital = sum(Saldo_Capital), 
+            intereses_pagos = sum(Intereses_Pagos),
+            saldo_intereses = sum(Saldo_Intereses),
+            prevision = sum(Saldo_Capital)*get_percentage(max(Atraso))) 
+head(customer_summary)
+```
+
+Calculo el resumen para TuCredito
+
+```{r}
+company_summary = customer_summary %>%
+  summarize(
+    'Prestamo' = gi_money(sum(prestamo)),    
+    'Capital Pagado' = gi_money(sum(capital_pagado)),    
+    'Saldo Capital' = gi_money(sum(saldo_capital)), 
+    'Intereses Pagos' = gi_money(sum(intereses_pagos)),    
+    'Saldo de Intereses' = gi_money(sum(saldo_intereses)),
+    'Previsión' = gi_money(sum(prevision)),
+    # Calculo el resultado como los intereses cobrados menos la prevision
+    'Resultado' = gi_money(sum(intereses_pagos) - sum(prevision)),
+    # Calculo cuanto representa el resultado en lo que tengo actualmente invertido, (desde el punto de vista contable, no financiero)
+    'Resultado Porcentual' = gi_percent((sum(intereses_pagos) - sum(prevision)) / sum(saldo_capital)),
+  )
+
+company_summary %>%
+  t() %>%
+  as.data.frame() %>%
+  rename(Valores = V1) %>%
+  kable(digits = 2) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = F,
+    fixed_thead = T
+  )
+```
+
+```{r}
+# Estoy trancado no me doy cuenta como graficar esto de mejor manera
+barplot(as.matrix(company_summary))
+```
+
+### Analisis de segmentos
+
+```{r}
+segment_summary = customer_summary %>%
+  select(segmento, atraso_maximo, prestamo, capital_pagado, saldo_capital, intereses_pagos, saldo_intereses, prevision) %>%
+  group_by(segmento) %>%
+  summarize(cantidad_de_clientes = n(),
+            atraso_promedio = mean(atraso_maximo), 
+            prestamo = sum(prestamo), 
+            capital_pagado = sum(capital_pagado),
+            saldo_capital = sum(saldo_capital),
+            intereses_pagos = sum(intereses_pagos),
+            saldo_intereses = sum(saldo_intereses),
+            prevision = sum(prevision),
+            resultado = sum(intereses_pagos) - sum(prevision),
+            resultado_porcentual = (sum(intereses_pagos) - sum(prevision))*100/sum(saldo_capital))
+head(segment_summary)
+```
+
+Graficamos
+
+```{r}
+gi_bar_chart(segment_summary$segmento, segment_summary$saldo_capital, main = "Saldo Capital por Segmento")
+```
+
+
+```{r}
+# De nuevo, las graficas estan como placeholders 
+#barplot(as.matrix(t(segment_summary)))
+segment_summary %>%
+  select(saldo_capital, intereses_pagos, prevision) %>%
+  t() %>%
+  as.matrix() %>%
+  barplot(
+    names.arg = c('VIP', 'Regular', 'Malo'),
+    col =  circlize::rand_color(length(x), hue = 'blue')
+  )
+```
+
+```{r}
+gi_bar_chart = function (x, y, main="", legend = FALSE) {
+  # Random colors
+  colors = circlize::rand_color(length(x), hue = 'blue')
+  # Basic Barplot
+  my_bar = barplot(
+    height = y,
+    names.arg = x,
+    border = NA,
+    col = colors,
+    main = main 
+  )
+  # Add the text
+  text(x = my_bar, y = y, labels = y, pos = 1, col = rgb(1, 1, 1))
+}
+```
+
+### `xtable`
+
+```{r}
+library(knitr)
+kable(head(df), digits = 2)
+```
+
+### Observaciones
 
 - La categorización del servicio fija la Tasa. Cuanto mejor es el cliente mejor es la Tasa.
 
